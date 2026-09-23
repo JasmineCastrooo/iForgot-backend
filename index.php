@@ -8,9 +8,10 @@ $data = json_decode(
 );
 
 $email = $data['email'] ?? '';
+$password = $data['password'] ?? '';
 
 $stmt = $pdo->prepare(
-    'SELECT id, email, password_hash, created_at
+    'SELECT id, email, password_hash
      FROM users
      WHERE email = ?'
 );
@@ -22,9 +23,23 @@ $user = $stmt->fetch(PDO::FETCH_ASSOC);
 if (!$user) {
     echo json_encode([
         'message' => 'Usuário não encontrado'
-    ]);
+    ], JSON_UNESCAPED_UNICODE);
 
     exit;
 }
 
-echo json_encode($user);
+if (!password_verify($password, $user['password_hash'])) {
+    echo json_encode([
+        'message' => 'Senha incorreta'
+    ], JSON_UNESCAPED_UNICODE);
+
+    exit;
+}
+
+echo json_encode([
+    'message' => 'Login realizado com sucesso',
+    'user' => [
+        'id' => $user['id'],
+        'email' => $user['email']
+    ]
+], JSON_UNESCAPED_UNICODE);
