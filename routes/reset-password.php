@@ -3,6 +3,8 @@
 
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/reset-validation-security.php';
+require_once __DIR__ . '/../config/password-policy.php';
+require_once __DIR__ . '/../config/password-reset-token.php';
 
 header('Content-Type: application/json; charset=utf-8');
 
@@ -14,8 +16,12 @@ if (!is_array($data)) {
     exit;
 }
 
-$email = trim($data['email'] ?? '');
-$code = trim($data['code'] ?? '');
+$email = is_string($data['email'] ?? null)
+    ? trim($data['email'])
+    : '';
+$code = is_string($data['code'] ?? null)
+    ? trim($data['code'])
+    : '';
 $newPassword = $data['new_password'] ?? '';
 $ipAddress = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
 
@@ -25,21 +31,15 @@ if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
     exit;
 }
 
-if (!preg_match('/^\d{8}$/', $code)) {
+if (!preg_match('/^[a-f0-9]{64}$/i', $code)) {
     http_response_code(400);
-    echo json_encode(['message' => 'Código de recuperação inválido'], JSON_UNESCAPED_UNICODE);
+    echo json_encode(['message' => 'Token de recuperação inválido'], JSON_UNESCAPED_UNICODE);
     exit;
 }
 
-if (!is_string($newPassword) || strlen($newPassword) < 8) {
+if (!is_string($newPassword) || !isPasswordPolicySatisfied($newPassword)) {
     http_response_code(400);
-    echo json_encode(['message' => 'A nova senha deve ter pelo menos 8 caracteres'], JSON_UNESCAPED_UNICODE);
-    exit;
-}
-
-if (strlen($newPassword) > 4096) {
-    http_response_code(400);
-    echo json_encode(['message' => 'A nova senha é muito longa'], JSON_UNESCAPED_UNICODE);
+    echo json_encode(['message' => 'A nova senha deve ter pelo menos 12 caracteres Unicode, no máximo 4096 bytes UTF-8 e incluir maiúscula, minúscula, número e símbolo'], JSON_UNESCAPED_UNICODE);
     exit;
 }
 
@@ -68,7 +68,7 @@ try {
 
     $stmt->execute([
         $email,
-        hash('sha256', $code)
+        hashPasswordResetToken(strtolower($code))
     ]);
 
     $reset = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -79,7 +79,7 @@ try {
         registerFailedResetValidation($pdo, $email, $ipAddress);
 
         http_response_code(400);
-        echo json_encode(['message' => 'Código inválido ou expirado'], JSON_UNESCAPED_UNICODE);
+        echo json_encode(['message' => 'Token inválido ou expirado'], JSON_UNESCAPED_UNICODE);
         exit;
     }
 

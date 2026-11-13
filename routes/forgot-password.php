@@ -4,6 +4,7 @@
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/mail.php';
 require_once __DIR__ . '/../config/password-reset-security.php';
+require_once __DIR__ . '/../config/password-reset-token.php';
 
 header('Content-Type: application/json; charset=utf-8');
 
@@ -63,8 +64,7 @@ if (!$user) {
     exit;
 }
 
-$code = (string) random_int(10000000, 99999999);
-$tokenHash = hash('sha256', $code);
+$code = bin2hex(random_bytes(32));
 
 $expiresAt = gmdate(
     'Y-m-d H:i:s',
@@ -74,6 +74,8 @@ $expiresAt = gmdate(
 $resetId = null;
 
 try {
+    $tokenHash = hashPasswordResetToken($code);
+
     $stmt = $pdo->prepare(
         'INSERT INTO password_resets (user_id, token_hash, expires_at)
          VALUES (?, ?, ?)'
@@ -96,13 +98,13 @@ try {
     $mail->Body = "
         <h2>Recuperação de senha</h2>
         <p>Recebemos uma solicitação para redefinir sua senha mestra.</p>
-        <p>Seu código de recuperação é:</p>
+        <p>Seu token de recuperação é:</p>
         <h1>$code</h1>
         <p>Esse código expira em 10 minutos e só pode ser utilizado uma vez.</p>
         <p>Se você não solicitou essa recuperação, ignore este e-mail.</p>
     ";
 
-    $mail->AltBody = "Seu código de recuperação do iForgot é: $code. Ele expira em 10 minutos.";
+    $mail->AltBody = "Seu token de recuperação do iForgot é: $code. Ele expira em 10 minutos.";
 
     $mail->send();
 
