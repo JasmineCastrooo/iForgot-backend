@@ -3,6 +3,7 @@
 
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/mail.php';
+require_once __DIR__ . '/../config/password-reset-security.php';
 
 header('Content-Type: application/json; charset=utf-8');
 
@@ -10,6 +11,16 @@ $data = json_decode(
     file_get_contents('php://input'),
     true
 );
+
+if (!is_array($data)) {
+    http_response_code(400);
+
+    echo json_encode([
+        'message' => 'Dados inválidos'
+    ], JSON_UNESCAPED_UNICODE);
+
+    exit;
+}
 
 $email = trim($data['email'] ?? '');
 
@@ -23,6 +34,22 @@ if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
     exit;
 }
 
+$ipAddress = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+
+$response = [
+    'message' => 'Se o e-mail estiver cadastrado, você receberá um código de recuperação.'
+];
+
+if (
+    isPasswordResetBlocked($pdo, $email, $ipAddress) ||
+    isPasswordResetIpBlocked($pdo, $ipAddress)
+) {
+    echo json_encode($response, JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+registerPasswordResetAttempt($pdo, $email, $ipAddress);
+
 $stmt = $pdo->prepare(
     'SELECT id FROM users WHERE email = ?'
 );
@@ -30,10 +57,6 @@ $stmt = $pdo->prepare(
 $stmt->execute([$email]);
 
 $user = $stmt->fetch(PDO::FETCH_ASSOC);
-
-$response = [
-    'message' => 'Se o e-mail estiver cadastrado, você receberá um código de recuperação.'
-];
 
 if (!$user) {
     echo json_encode($response, JSON_UNESCAPED_UNICODE);
@@ -48,16 +71,9 @@ $expiresAt = gmdate(
     time() + (10 * 60)
 );
 
+$resetId = null;
+
 try {
-    $stmt = $pdo->prepare(
-        'UPDATE password_resets
-         SET used_at = UTC_TIMESTAMP()
-         WHERE user_id = ?
-         AND used_at IS NULL'
-    );
-
-    $stmt->execute([$user['id']]);
-
     $stmt = $pdo->prepare(
         'INSERT INTO password_resets (user_id, token_hash, expires_at)
          VALUES (?, ?, ?)'
@@ -68,6 +84,8 @@ try {
         $tokenHash,
         $expiresAt
     ]);
+
+    $resetId = (int) $pdo->lastInsertId();
 
     $mail = createMailer();
 
@@ -88,7 +106,42 @@ try {
 
     $mail->send();
 
+    $stmt = $pdo->prepare(
+        'UPDATE password_resets
+         SET used_at = UTC_TIMESTAMP()
+         WHERE user_id = ?
+         AND id <> ?
+         AND used_at IS NULL'
+    );
+
+    $stmt->execute([
+        $user['id'],
+        $resetId
+    ]);
+
 } catch (Throwable $e) {
+    error_log(
+        'Erro na recuperação de senha: ' . $e->getMessage()
+    );
+
+    if ($resetId !== null) {
+        try {
+            $stmt = $pdo->prepare(
+                'UPDATE password_resets
+                 SET used_at = UTC_TIMESTAMP()
+                 WHERE id = ?'
+            );
+
+            $stmt->execute([$resetId]);
+
+        } catch (Throwable $cleanupError) {
+            error_log(
+                'Erro ao invalidar código de recuperação: ' .
+                $cleanupError->getMessage()
+            );
+        }
+    }
+
     http_response_code(500);
 
     echo json_encode([

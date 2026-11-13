@@ -32,8 +32,8 @@ function getAuthenticatedUser(PDO $pdo): ?array
 {
     $authorization = $_SERVER['HTTP_AUTHORIZATION'] ?? '';
 
-    if (!preg_match('/^Bearer\s+(.+)$/i', $authorization, $matches)) {
-        return null;
+    if (!preg_match('/^Bearer\s+([a-f0-9]{64})$/i', $authorization, $matches)) {
+    return null;
     }
 
     $tokenHash = hash('sha256', $matches[1]);
