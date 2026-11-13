@@ -1,45 +1,48 @@
+
 <?php
 
-require_once __DIR__ . '/config/database.php';
+require_once __DIR__ . '/vendor/autoload.php';
 
-$data = json_decode(
-    file_get_contents('php://input'),
-    true
-);
+$dotenv = Dotenv\Dotenv::createImmutable(__DIR__);
+$dotenv->load();
 
-$email = $data['email'] ?? '';
-$password = $data['password'] ?? '';
+header('Content-Type: application/json; charset=utf-8');
 
-$stmt = $pdo->prepare(
-    'SELECT id, email, password_hash
-     FROM users
-     WHERE email = ?'
-);
+$requestUri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
+$requestMethod = $_SERVER['REQUEST_METHOD'];
 
-$stmt->execute([$email]);
-
-$user = $stmt->fetch(PDO::FETCH_ASSOC);
-
-if (!$user) {
-    echo json_encode([
-        'message' => 'Usuário não encontrado'
-    ], JSON_UNESCAPED_UNICODE);
-
+if ($requestUri === '/login' && $requestMethod === 'POST') {
+    require_once __DIR__ . '/routes/login.php';
     exit;
 }
 
-if (!password_verify($password, $user['password_hash'])) {
-    echo json_encode([
-        'message' => 'Senha incorreta'
-    ], JSON_UNESCAPED_UNICODE);
-
+if ($requestUri === '/register' && $requestMethod === 'POST') {
+    require_once __DIR__ . '/routes/register.php';
     exit;
 }
+
+if ($requestUri === '/me' && $requestMethod === 'GET') {
+    require_once __DIR__ . '/routes/me.php';
+    exit;
+}
+
+if ($requestUri === '/logout' && $requestMethod === 'POST') {
+    require_once __DIR__ . '/routes/logout.php';
+    exit;
+}
+
+if ($requestUri === '/forgot-password' && $requestMethod === 'POST') {
+    require_once __DIR__ . '/routes/forgot-password.php';
+    exit;
+}
+
+if ($requestUri === '/reset-password' && $requestMethod === 'POST') {
+    require_once __DIR__ . '/routes/reset-password.php';
+    exit;
+}
+
+http_response_code(404);
 
 echo json_encode([
-    'message' => 'Login realizado com sucesso',
-    'user' => [
-        'id' => $user['id'],
-        'email' => $user['email']
-    ]
+    'message' => 'Rota não encontrada'
 ], JSON_UNESCAPED_UNICODE);

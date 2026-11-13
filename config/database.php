@@ -3,7 +3,7 @@
 $host = '127.0.0.1';
 $db = 'iforgot_dev';
 $user = 'root';
-$password = ')O(I*U123#';
+$password = 'being';
 
 $dsn = "mysql:host=$host;dbname=$db;charset=utf8mb4";
 
